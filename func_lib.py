@@ -9,7 +9,7 @@ def createHistPrices(start_date='2000-01-01', end_date='2024-05-01'):
     sp500_tickers = [ticker for ticker in sp500_tickers if '.B' not in ticker]
 
     # Descargar precios históricos
-    historical_prices = yf.download(sp500_tickers, start=start_date, end=end_date)
+    historical_prices = yf.download(sp500_tickers, start=start_date, end=end_date, auto_adjust=False)
 
     # Filtrar solo columnas "Adj Close"
     historical_prices = historical_prices.loc[:, historical_prices.columns.get_level_values(0) == 'Adj Close']
