@@ -83,8 +83,6 @@ def computingReturns(historical_prices, list_of_momentums):
     # Retornar el DataFrame limpio
     return total_returns
 
-import pandas as pd
-import matplotlib.pyplot as plt
 
 def compute_BM_Perf(total_returns):
     """
@@ -170,3 +168,51 @@ def compute_BM_Perf(total_returns):
     plt.show()
 
     return cum_returns, calendar_returns
+
+
+def calculate_rsi(returns, window=14):
+    """
+    Calcula el RSI (Relative Strength Index) de una serie de retornos.
+    
+    Parámetros:
+    ------------
+    returns : Series (pandas)
+        Serie de retornos diarios o periódicos (pueden ser de precios, log returns, etc.)
+    
+    window : int (opcional, por defecto=14)
+        Número de días (ventana) usado para calcular las medias móviles de ganancias y pérdidas.
+    
+    Retorna:
+    --------
+    rsi : Series
+        Serie del RSI, con valores entre 0 y 100.
+    """
+
+    # --- Paso 1: Calcular las ganancias positivas en los retornos ---
+    gain = returns[returns > 0].dropna().rolling(window=window).mean()
+    gain.name = 'gain'  # Se asigna nombre a la serie para luego integrarla al DataFrame
+
+    # --- Paso 2: Calcular las pérdidas (valores negativos de retorno) ---
+    loss = returns[returns < 0].dropna().rolling(window=window).mean()
+    loss.name = 'loss'
+
+    # --- Paso 3: Añadir las columnas de gain y loss al DataFrame de retornos original ---
+    returns = pd.merge(returns, gain, left_index=True, right_index=True, how='left')
+    returns = pd.merge(returns, loss, left_index=True, right_index=True, how='left')
+
+    # --- Paso 4: Rellenar valores faltantes hacia adelante (forward fill) ---
+    # Esto es necesario porque el cálculo de medias móviles produce NaNs al principio
+    returns = returns.ffill()
+
+    # --- Paso 5: Eliminar cualquier fila que aún tenga valores nulos ---
+    returns.dropna(inplace=True)
+
+    # --- Paso 6: Calcular el "RS" (Relative Strength) ---
+    # RS = media de ganancias / valor absoluto de la media de pérdidas
+    ratio = returns['gain'] / abs(returns['loss'])
+
+    # --- Paso 7: Calcular el RSI con la fórmula estándar ---
+    # RSI = 100 - (100 / (1 + RS))
+    rsi = 100 - (100 / (1 + ratio))
+
+    return rsi
