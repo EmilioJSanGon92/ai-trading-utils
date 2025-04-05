@@ -216,3 +216,95 @@ def calculate_rsi(returns, window=14):
     rsi = 100 - (100 / (1 + ratio))
 
     return rsi
+
+def compute_strat_perf(total_returns, cum_returns, calendar_returns, trading_strategy, model_name):
+    """
+    Evalúa el rendimiento de una estrategia de trading basada en una señal como RSI, MACD, etc.
+    
+    Parámetros:
+    ------------
+    total_returns : pd.DataFrame
+        DataFrame que contiene los retornos diarios por activo y la columna con la señal del modelo.
+
+    cum_returns : pd.DataFrame
+        DataFrame que guarda los retornos acumulados (por cada estrategia o modelo).
+
+    calendar_returns : pd.DataFrame
+        DataFrame que guarda los retornos anuales (por cada estrategia o modelo).
+
+    trading_strategy : función
+        Función que aplica lógica de decisión (ej. comprar si RSI < 30, vender si RSI > 70).
+
+    model_name : str
+        Nombre de la columna del modelo que contiene la señal (por ejemplo: 'RSI').
+
+    Retorna:
+    --------
+    cum_returns : pd.DataFrame
+        Retornos acumulados actualizados con la estrategia aplicada.
+
+    calendar_returns : pd.DataFrame
+        Retornos anuales por año calendario, aplicando la estrategia.
+    """
+
+    # 1. Aplicar la estrategia de trading a cada valor de señal
+    total_returns['Position'] = total_returns[model_name].transform(trading_strategy)
+
+    # 2. Calcular el retorno diario condicionado a la posición tomada (0 = no invertir, 1 = invertir)
+    total_returns[f'{model_name}_Return'] = total_returns['F_1_d_returns'] * total_returns['Position']
+
+    # 3. Agrupar por fecha y calcular el retorno promedio diario (equal-weighted benchmark)
+    daily_mean = pd.DataFrame(
+        total_returns.loc[:, f'{model_name}_Return']
+        .groupby(level='Date')
+        .mean()
+    )
+
+    # 4. Calcular retornos acumulados
+    cum_returns.loc[:, f'{model_name}_Return'] = ((daily_mean[[f'{model_name}_Return']] + 1).cumprod())
+
+    # 5. Visualizar la evolución de los retornos acumulados
+    cum_returns.plot()
+    plt.title('Cumulative Returns Over Time', fontsize=16, fontweight='bold')
+    plt.xlabel('Date', fontsize=14)
+    plt.ylabel('Cumulative Return', fontsize=14)
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.legend(title_fontsize='13', fontsize='11')
+    plt.show()
+
+    # 6. Calcular CAGR (Compound Annual Growth Rate)
+    number_of_years = len(daily_mean) / 252  # 252 días de trading al año
+    ending_value = cum_returns[f'{model_name}_Return'].iloc[-1]
+    beginning_value = cum_returns[f'{model_name}_Return'].iloc[1]
+    ratio = ending_value / beginning_value
+    cagr = round((ratio ** (1 / number_of_years) - 1) * 100, 2)
+    print(f'The CAGR is: {cagr}%')
+
+    # 7. Calcular Sharpe Ratio (retorno ajustado por riesgo)
+    average_daily_return = daily_mean[[f'{model_name}_Return']].describe().iloc[1, :] * 252
+    std_daily_return = daily_mean[[f'{model_name}_Return']].describe().iloc[2, :] * (252 ** 0.5)
+    sharpe = average_daily_return / std_daily_return
+    print(f'Sharpe Ratio of Strategy: {round(sharpe.iloc[0], 2)}')
+
+    # 8. Calcular retornos anuales por calendario
+    ann_returns = (
+        ((daily_mean[f'{model_name}_Return'] + 1)
+         .groupby(daily_mean.index.get_level_values(0).year)
+         .cumprod()) - 1
+    ) * 100
+
+    calendar_returns.loc[:, f'{model_name}_Return'] = ann_returns.groupby(
+        daily_mean.index.get_level_values(0).year
+    ).last()
+
+    # 9. Visualización de retornos anuales por año
+    calendar_returns.plot.bar(rot=30, legend='top_left')
+    plt.title('Calendar Year Returns')
+    plt.ylabel('Return (%)')
+    plt.grid(True, axis='y')
+    plt.tight_layout()
+    plt.show()
+
+    return cum_returns, calendar_returns
+
