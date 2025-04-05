@@ -82,3 +82,91 @@ def computingReturns(historical_prices, list_of_momentums):
 
     # Retornar el DataFrame limpio
     return total_returns
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def compute_BM_Perf(total_returns):
+    """
+    Computes benchmark performance using equal-weighted daily mean returns.
+    Calculates cumulative returns, calendar year returns, CAGR, and Sharpe ratio.
+    
+    Parameters:
+    -----------
+    total_returns : DataFrame
+        Pandas DataFrame containing daily returns for multiple assets, 
+        with a multi-index (Date, Ticker) and column 'F_1_d_returns'.
+    
+    Returns:
+    --------
+    cum_returns : DataFrame
+        Cumulative returns over time.
+    
+    calendar_returns : DataFrame
+        Calendar year (annual) returns.
+    """
+
+    # --- 1. Compute equal-weighted daily mean of all stocks ---
+    daily_mean = pd.DataFrame(
+        total_returns.loc[:, 'F_1_d_returns']
+        .groupby(level='Date')
+        .mean()
+    )
+    daily_mean.rename(columns={'F_1_d_returns': 'SP&500'}, inplace=True)
+
+    # --- 2. Convert daily returns to cumulative returns ---
+    cum_returns = pd.DataFrame((daily_mean[['SP&500']] + 1).cumprod())
+
+    # --- 3. Plot cumulative returns ---
+    cum_returns.plot()
+    plt.title('Cumulative Returns Over Time', fontsize=16, fontweight='bold')
+    plt.xlabel('Date', fontsize=14)
+    plt.ylabel('Cumulative Return', fontsize=14)
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.legend(title_fontsize='13', fontsize='11')
+    plt.show()
+
+    # --- 4. Compute CAGR (Compound Annual Growth Rate) ---
+    trading_days_per_year = 252
+    number_of_years = len(daily_mean) / trading_days_per_year
+
+    ending_value = cum_returns['SP&500'].iloc[-1]
+    beginning_value = cum_returns['SP&500'].iloc[1]  # avoid 0 to prevent division issues
+
+    ratio = ending_value / beginning_value
+    cagr = round((ratio ** (1 / number_of_years) - 1) * 100, 2)
+
+    print(f'CAGR: {cagr}%')
+
+    # --- 5. Compute Sharpe Ratio ---
+    avg_daily_return = daily_mean['SP&500'].mean() * trading_days_per_year
+    std_daily_return = daily_mean['SP&500'].std() * (trading_days_per_year ** 0.5)
+
+    sharpe_ratio = avg_daily_return / std_daily_return
+    print(f'Sharpe Ratio: {round(sharpe_ratio, 2)}')
+
+    # --- 6. Compute calendar year returns ---
+    # Agrupar por año y calcular retornos acumulados por año
+    ann_returns = (
+        (daily_mean[['SP&500']] + 1)
+        .groupby(daily_mean.index.get_level_values(0).year)
+        .cumprod() - 1
+    ) * 100
+
+    # Tomar el último valor de cada año (retorno total anual)
+    calendar_returns = pd.DataFrame(
+        ann_returns['SP&500']
+        .groupby(daily_mean.index.get_level_values(0).year)
+        .last()
+    )
+
+    # --- 7. Plot calendar returns ---
+    calendar_returns.plot.bar(rot=30, legend=False)
+    plt.title("Calendar Year Returns", fontsize=14, fontweight='bold')
+    plt.ylabel("Return (%)", fontsize=12)
+    plt.grid(True, axis='y')
+    plt.tight_layout()
+    plt.show()
+
+    return cum_returns, calendar_returns
